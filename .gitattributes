@@ -1,0 +1,5 @@
+# Normalize to LF in the repo and working tree (reviewers/CI run on macOS/Linux); Windows scripts keep CRLF.
+* text=auto eol=lf
+/gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary

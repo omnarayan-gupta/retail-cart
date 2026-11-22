@@ -1,0 +1,29 @@
+server:
+  port: 8081 # 8080 is used by the Target product container
+
+spring:
+  application:
+    name: retail-cart
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/retailcart}
+    username: ${DB_USERNAME:retailcart}
+    password: ${DB_PASSWORD:retailcart}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate # schema is owned by Flyway
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
