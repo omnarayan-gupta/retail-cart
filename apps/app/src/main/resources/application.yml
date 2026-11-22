@@ -18,6 +18,13 @@ spring:
   flyway:
     enabled: true
 
+cart:
+  ttl: P30D          # carts with items expire 30 days after the last write (D21)
+  empty-ttl: PT24H   # empty carts expire 24 hours after the last write (D21)
+  currency: USD      # Pricing API has no currency field (D30, clarifying question 4)
+  view:
+    lookup-timeout: PT1S # per-dependency safety net when building a cart view (D11)
+
 management:
   endpoints:
     web:
