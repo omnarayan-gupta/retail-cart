@@ -43,10 +43,10 @@ class CartServiceTest {
   private final CartService service =
       new CartService(
           carts,
+          new ActiveCarts(carts, CartExpiryPolicy.defaults(), Clock.fixed(NOW, ZoneOffset.UTC)),
           items,
           availability,
           new AvailabilityPolicy(),
-          CartExpiryPolicy.defaults(),
           Runnable::run, // run "parallel" calls inline: deterministic tests
           Clock.fixed(NOW, ZoneOffset.UTC));
 

@@ -1,7 +1,6 @@
 package com.target.retailcart.app.application;
 
 import com.target.retailcart.app.domain.Cart;
-import com.target.retailcart.app.domain.CartExpiryPolicy;
 import com.target.retailcart.app.domain.CartId;
 import com.target.retailcart.app.domain.CartLine;
 import com.target.retailcart.app.domain.ItemId;
@@ -15,7 +14,6 @@ import java.time.Clock;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.function.Function;
 import org.slf4j.Logger;
@@ -39,26 +37,26 @@ public class CartService {
   private static final Logger log = LoggerFactory.getLogger(CartService.class);
 
   private final CartRepository carts;
+  private final ActiveCarts activeCarts;
   private final ItemClient items;
   private final AvailabilityClient availability;
   private final AvailabilityPolicy availabilityPolicy;
-  private final CartExpiryPolicy expiryPolicy;
   private final Executor productCallExecutor;
   private final Clock clock;
 
   public CartService(
       CartRepository carts,
+      ActiveCarts activeCarts,
       ItemClient items,
       AvailabilityClient availability,
       AvailabilityPolicy availabilityPolicy,
-      CartExpiryPolicy expiryPolicy,
       @Qualifier("productCallExecutor") Executor productCallExecutor,
       Clock clock) {
     this.carts = carts;
+    this.activeCarts = activeCarts;
     this.items = items;
     this.availability = availability;
     this.availabilityPolicy = availabilityPolicy;
-    this.expiryPolicy = expiryPolicy;
     this.productCallExecutor = productCallExecutor;
     this.clock = clock;
   }
@@ -74,7 +72,7 @@ public class CartService {
 
   /** Adds an item to an existing cart, merging with an existing line (D9). */
   public CartItemResult addItem(CartId cartId, ItemId itemId, int quantity) {
-    loadActiveCart(cartId); // fail fast on a bad cartId before calling dependencies
+    activeCarts.load(cartId); // fail fast on a bad cartId before calling dependencies
     int maxAllowed = checkCanBeAdded(itemId);
     return withRetry(
         cartId,
@@ -105,14 +103,6 @@ public class CartService {
         });
   }
 
-  /** Loads a cart, treating an expired one as missing (D21). */
-  Cart loadActiveCart(CartId cartId) {
-    return carts
-        .findById(cartId)
-        .filter(cart -> !cart.isExpired(clock.instant(), expiryPolicy))
-        .orElseThrow(() -> new CartNotFoundException(cartId));
-  }
-
   /**
    * Add-time check (D31): calls Item and Availability in parallel.
    *
@@ -135,14 +125,14 @@ public class CartService {
             () -> availability.findAvailability(itemId), productCallExecutor);
 
     try {
-      if (await(item).isEmpty()) {
+      if (Async.await(item).isEmpty()) {
         throw new ItemNotFoundException(itemId);
       }
     } catch (DependencyUnavailableException e) {
       log.warn("Item lookup failed for {}; relying on availability only", itemId, e);
     }
 
-    return await(stock)
+    return Async.await(stock)
         .filter(availabilityPolicy::isAvailable)
         .map(availabilityPolicy::maxAllowed)
         .orElseThrow(() -> new ItemUnavailableException(itemId));
@@ -161,7 +151,7 @@ public class CartService {
   private <T> T withRetry(CartId cartId, Function<Cart, T> change) {
     OptimisticLockingFailureException lastConflict = null;
     for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      Cart cart = loadActiveCart(cartId);
+      Cart cart = activeCarts.load(cartId);
       T outcome = change.apply(cart);
       try {
         carts.save(cart);
@@ -176,16 +166,5 @@ public class CartService {
 
   private static CartItemResult result(Cart cart, CartLine line, boolean created) {
     return new CartItemResult(cart.id(), line.itemId(), line.quantity(), cart.itemCount(), created);
-  }
-
-  private static <T> T await(CompletableFuture<T> future) {
-    try {
-      return future.join();
-    } catch (CompletionException e) {
-      if (e.getCause() instanceof RuntimeException runtime) {
-        throw runtime;
-      }
-      throw e;
-    }
   }
 }
