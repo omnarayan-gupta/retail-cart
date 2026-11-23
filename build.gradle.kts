@@ -49,6 +49,7 @@ spotless {
 }
 
 // Keep parameter names in bytecode so Spring can bind @PathVariable/@RequestParam by name.
+// The Spring Boot plugin also adds this flag; it's stated here to make the requirement explicit.
 tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.add("-parameters")
 }
