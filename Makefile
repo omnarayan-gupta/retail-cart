@@ -16,7 +16,7 @@ format:  ## Fix formatting (Spotless)
 	$(GRADLE) spotlessApply
 
 run:     ## Run the cart app locally on :8081 (needs Postgres: `make up`)
-	$(GRADLE) :apps:app:bootRun
+	$(GRADLE) bootRun
 
 up:      ## Start Postgres + Target product services
 	docker compose up -d

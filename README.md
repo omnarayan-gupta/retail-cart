@@ -9,9 +9,13 @@ It depends on the Target product services (Item, Pricing, Availability) and alwa
 
 | Path | Purpose |
 |---|---|
-| `apps/app` | The cart service (Spring Web MVC, port 8081) |
-| `libs/product-client` | Reusable clients for the Item, Pricing and Availability services |
+| `build.gradle.kts` | Single Gradle build for the service |
 | `gradle/libs.versions.toml` | All dependency versions in one place |
+| `src/main/java/.../app/api` | REST controller, request/response DTOs, error handling |
+| `src/main/java/.../app/application` | Use cases: add/update/remove, cart view |
+| `src/main/java/.../app/domain` | Cart rules (plain Java) and ports (interfaces) |
+| `src/main/java/.../app/infrastructure` | Adapters: PostgreSQL (`persistence`), product service clients (`client`), config |
+| `src/main/resources` | `application.yml`, Flyway migrations |
 
 ## Quick start
 
