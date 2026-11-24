@@ -192,11 +192,11 @@ Reports after a build:
 With the stack running (section 2, option A or B):
 
 ```bash
-scripts/smoke.sh             # 25 checks with real catalog data
+scripts/smoke.sh             # 24 checks with real catalog data
 scripts/smoke.sh --outage    # + stops the product services to show degradation and recovery
 ```
 
-Expected ending: `25 passed, 0 failed` (or `31 passed, 0 failed` with `--outage`).
+Expected ending: `24 passed, 0 failed` (or `31 passed, 0 failed` with `--outage`).
 
 The `--outage` run stops the product container mid-test and shows that the cart view still works
 (flagged incomplete), adds return **503** with `Retry-After`, the cart service stays healthy, and
