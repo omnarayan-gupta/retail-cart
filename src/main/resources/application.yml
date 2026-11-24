@@ -25,6 +25,40 @@ cart:
   view:
     lookup-timeout: PT1S # per-dependency safety net when building a cart view (D11)
 
+product-service:
+  base-url: ${PRODUCT_SERVICE_URL:http://localhost:8080}
+  connect-timeout: 250ms
+  read-timeout: 400ms # 400 + 50 wait + 400 retry = 850ms, inside cart.view.lookup-timeout (D15)
+
+# One circuit breaker and one retry per product service (D15). Instance names match the adapters.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20               # judge health on the last 20 calls
+        minimum-number-of-calls: 10           # ...but only once there have been 10
+        failure-rate-threshold: 50            # open when half of them failed
+        wait-duration-in-open-state: 10s      # fail fast for 10s, then probe
+        permitted-number-of-calls-in-half-open-state: 3
+        register-health-indicator: false      # dependencies never affect our health (D27)
+    instances:
+      item: { base-config: default }
+      pricing: { base-config: default }
+      availability: { base-config: default }
+  retry:
+    configs:
+      default:
+        max-attempts: 2                       # the call plus one retry
+        wait-duration: 50ms
+        retry-exceptions:                     # only transient failures; never a 404 or other 4xx
+          - org.springframework.web.client.ResourceAccessException   # timeout, connection refused
+          - org.springframework.web.client.HttpServerErrorException  # 5xx
+    instances:
+      item: { base-config: default }
+      pricing: { base-config: default }
+      availability: { base-config: default }
+
 management:
   endpoints:
     web:
