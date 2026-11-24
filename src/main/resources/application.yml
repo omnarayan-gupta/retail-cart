@@ -28,6 +28,11 @@ cart:
     ttl: PT24H   # a completed Idempotency-Key is remembered for 24 hours (D6)
     lease: PT10S # an in-progress request blocks its key for at most 10s if it dies
 
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  paths-to-match: /api/** # document the cart API only, not actuator
+
 product-service:
   base-url: ${PRODUCT_SERVICE_URL:http://localhost:8080}
   connect-timeout: 250ms
@@ -54,15 +59,22 @@ resilience4j:
       default:
         max-attempts: 2                       # the call plus one retry
         wait-duration: 50ms
-        retry-exceptions:                     # only transient failures; never a 404 or other 4xx
-          - org.springframework.web.client.ResourceAccessException   # timeout, connection refused
-          - org.springframework.web.client.HttpServerErrorException  # 5xx
+        # Retry transient failures: connection errors, timeouts (including one that fires while the
+        # body is still being read, which surfaces as a plain RestClientException) and 5xx.
+        # Never a 4xx: 404 is an answer, and other 4xx won't change on retry.
+        retry-exceptions:
+          - org.springframework.web.client.RestClientException
+        ignore-exceptions:
+          - org.springframework.web.client.HttpClientErrorException
     instances:
       item: { base-config: default }
       pricing: { base-config: default }
       availability: { base-config: default }
 
 management:
+  tracing:
+    sampling:
+      probability: 1.0 # trace every request; no exporter configured, ids go to logs and downstream calls (D41)
   endpoints:
     web:
       exposure:

@@ -192,11 +192,12 @@ class ProductClientsTest {
   }
 
   @Test
-  void malformedResponseIsDependencyUnavailable() {
+  void responseThatNeverParsesIsDependencyUnavailableAfterOneRetry() {
     wireMock.stubFor(get(PRICE_URL).willReturn(okJson("{not json")));
 
     assertThatThrownBy(() -> pricing.findPrice(TEE))
         .isInstanceOf(DependencyUnavailableException.class);
+    wireMock.verify(2, getRequestedFor(urlEqualTo(PRICE_URL)));
   }
 
   // --- timeouts ------------------------------------------------------------------------------
@@ -217,6 +218,35 @@ class ProductClientsTest {
     // 400ms read timeout, 50ms wait, 400ms retry: well under the 1s per-lookup budget.
     assertThat(elapsed).isBetween(Duration.ofMillis(800), Duration.ofMillis(1_000));
     wireMock.verify(2, getRequestedFor(urlEqualTo(PRICE_URL)));
+  }
+
+  /**
+   * Spring's JDK client enforces the read timeout over the whole exchange and closes the stream
+   * when it expires, even mid-parse. Seen on a cold start: the body had arrived, but the first JSON
+   * parse ran past 400ms and failed with "Error while extracting response", a plain
+   * RestClientException rather than a ResourceAccessException. A body that can't be read raises
+   * that same exception, so this checks the class of failure is retried like any transient error.
+   */
+  @Test
+  void responseThatCannotBeReadIsRetried() {
+    wireMock.stubFor(
+        get(AVAILABILITY_URL)
+            .inScenario("unreadable once")
+            .whenScenarioStateIs(STARTED)
+            .willReturn(okJson("{\"item_id\":\"54276335\",\"available_units\":"))
+            .willSetStateTo("fine"));
+    wireMock.stubFor(
+        get(AVAILABILITY_URL)
+            .inScenario("unreadable once")
+            .whenScenarioStateIs("fine")
+            .willReturn(
+                okJson(
+                    """
+                    {"item_id":"54276335","available_units":312,"limited_quantity_threshold":20}
+                    """)));
+
+    assertThat(availability.findAvailability(TEE)).isPresent();
+    wireMock.verify(2, getRequestedFor(urlEqualTo(AVAILABILITY_URL)));
   }
 
   // --- circuit breaker -----------------------------------------------------------------------

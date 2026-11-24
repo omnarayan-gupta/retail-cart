@@ -43,6 +43,7 @@ services:
       DB_USERNAME: retailcart
       DB_PASSWORD: retailcart
       PRODUCT_SERVICE_URL: http://product:8080
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs # JSON logs with trace ids, for log shippers (D41)
     depends_on:
       postgres:
         condition: service_healthy # the cart can't start without its database
