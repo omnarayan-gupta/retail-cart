@@ -57,6 +57,11 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.add("-parameters")
 }
 
+// Only the executable Boot jar is needed; skip the plain jar so build/libs holds a single file.
+tasks.jar {
+    enabled = false
+}
+
 tasks.test {
     useJUnitPlatform()
     finalizedBy(tasks.jacocoTestReport)

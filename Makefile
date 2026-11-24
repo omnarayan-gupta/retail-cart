@@ -1,7 +1,7 @@
 # Convenience targets. On Windows use `gradlew.bat` directly or run make from Git Bash.
 GRADLE := ./gradlew
 
-.PHONY: build test lint format run up down smoke clean
+.PHONY: build test lint format run deps up down smoke clean
 
 build:   ## Compile, check formatting, run all tests
 	$(GRADLE) build
@@ -15,13 +15,16 @@ lint:    ## Check formatting (Spotless)
 format:  ## Fix formatting (Spotless)
 	$(GRADLE) spotlessApply
 
-run:     ## Run the cart app locally on :8081 (needs Postgres: `make up`)
+run:     ## Run the cart app from source on :8081 (start its dependencies first: `make deps`)
 	$(GRADLE) bootRun
 
-up:      ## Start Postgres + Target product services
-	docker compose up -d
+deps:    ## Start only Postgres + Target product services (for `make run` / IDE)
+	docker compose up -d postgres product
 
-down:    ## Stop containers
+up:      ## Build and start everything: Postgres, Target product services, cart app
+	docker compose up -d --build
+
+down:    ## Stop containers (cart data is kept; add -v to wipe it)
 	docker compose down
 
 smoke:   ## Quick health check of dependencies and the app

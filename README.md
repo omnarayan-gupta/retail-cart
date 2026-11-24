@@ -19,7 +19,30 @@ It depends on the Target product services (Item, Pricing, Availability) and alwa
 
 ## Quick start
 
+Prerequisite: Docker. (To build from source you also need JDK 21, or let Gradle download it.)
+
 ```bash
-./gradlew build          # compile, check formatting, run tests
-./gradlew spotlessApply  # fix formatting
+docker compose up -d --build      # Postgres + Target product services + cart app
+curl http://localhost:8081/actuator/health
+
+# Add an item (creates the cart), then view it with live prices
+curl -i -X POST http://localhost:8081/api/v1/carts/items \
+     -H 'Content-Type: application/json' -d '{"itemId":"54276335","quantity":2}'
+curl http://localhost:8081/api/v1/carts/<cartId from the response>
+
+docker compose down               # stop (add -v to also delete cart data)
+```
+
+| Service | URL |
+|---|---|
+| Cart service (this project) | http://localhost:8081/api/v1/carts |
+| Target product services | http://localhost:8080/product/v1 |
+| PostgreSQL | localhost:5432 (db/user/password `retailcart`) |
+
+## Development
+
+```bash
+./gradlew build                     # compile, check formatting, run all tests (Docker needed for Testcontainers)
+./gradlew spotlessApply             # fix formatting
+docker compose up -d postgres product && ./gradlew bootRun   # run from source against the containers
 ```
