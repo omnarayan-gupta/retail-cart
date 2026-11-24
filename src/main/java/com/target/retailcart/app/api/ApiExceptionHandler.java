@@ -4,6 +4,8 @@ import com.target.retailcart.app.application.CartNotFoundException;
 import com.target.retailcart.app.application.ConcurrentCartModificationException;
 import com.target.retailcart.app.application.ItemNotFoundException;
 import com.target.retailcart.app.application.ItemUnavailableException;
+import com.target.retailcart.app.application.idempotency.IdempotencyKeyInProgressException;
+import com.target.retailcart.app.application.idempotency.IdempotencyKeyReusedException;
 import com.target.retailcart.app.domain.ItemNotInCartException;
 import com.target.retailcart.app.domain.QuantityLimitExceededException;
 import com.target.retailcart.app.domain.port.DependencyUnavailableException;
@@ -16,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.method.ParameterErrors;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -66,6 +69,18 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     return problem(HttpStatus.CONFLICT, "CONCURRENT_MODIFICATION", e.getMessage());
   }
 
+  @ExceptionHandler(IdempotencyKeyReusedException.class)
+  ProblemDetail idempotencyKeyReused(IdempotencyKeyReusedException e) {
+    return problem(HttpStatus.UNPROCESSABLE_CONTENT, "IDEMPOTENCY_KEY_REUSED", e.getMessage());
+  }
+
+  @ExceptionHandler(IdempotencyKeyInProgressException.class)
+  ResponseEntity<ProblemDetail> idempotencyKeyInProgress(IdempotencyKeyInProgressException e) {
+    return ResponseEntity.status(HttpStatus.CONFLICT)
+        .header(HttpHeaders.RETRY_AFTER, "1")
+        .body(problem(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_IN_PROGRESS", e.getMessage()));
+  }
+
   @ExceptionHandler(DependencyUnavailableException.class)
   ResponseEntity<ProblemDetail> dependencyUnavailable(DependencyUnavailableException e) {
     log.warn("Rejecting write: {}", e.getMessage());
@@ -107,7 +122,11 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     return validationFailed(errors, headers);
   }
 
-  /** Invalid path variable, e.g. a non-numeric item id. */
+  /**
+   * Invalid path variable or header, e.g. a non-numeric item id. When a method has such
+   * constraints, Spring validates its {@code @Valid} body here too; those errors are reported per
+   * field ({@code quantity: ...}), the same as {@link #handleMethodArgumentNotValid}.
+   */
   @Override
   protected ResponseEntity<Object> handleHandlerMethodValidationException(
       HandlerMethodValidationException e,
@@ -116,12 +135,17 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
       WebRequest request) {
     List<String> errors =
         e.getParameterValidationResults().stream()
-            .flatMap(result ->
-                result.getResolvableErrors().stream()
-                    .map(error ->
-                        result.getMethodParameter().getParameterName()
-                            + ": "
-                            + error.getDefaultMessage()))
+            .flatMap(result -> {
+              if (result instanceof ParameterErrors bodyErrors) {
+                return bodyErrors.getFieldErrors().stream()
+                    .map(error -> error.getField() + ": " + error.getDefaultMessage());
+              }
+              return result.getResolvableErrors().stream()
+                  .map(error ->
+                      result.getMethodParameter().getParameterName()
+                          + ": "
+                          + error.getDefaultMessage());
+            })
             .toList();
     return validationFailed(errors, headers);
   }

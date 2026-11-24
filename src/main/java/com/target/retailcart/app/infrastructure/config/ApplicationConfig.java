@@ -1,5 +1,6 @@
 package com.target.retailcart.app.infrastructure.config;
 
+import com.target.retailcart.app.application.idempotency.IdempotencySettings;
 import com.target.retailcart.app.application.view.CartViewSettings;
 import com.target.retailcart.app.domain.CartExpiryPolicy;
 import java.time.Clock;
@@ -36,5 +37,11 @@ public class ApplicationConfig {
   @Bean
   CartViewSettings cartViewSettings(CartProperties properties) {
     return new CartViewSettings(properties.currency(), properties.view().lookupTimeout());
+  }
+
+  @Bean
+  IdempotencySettings idempotencySettings(CartProperties properties) {
+    return new IdempotencySettings(
+        properties.idempotency().ttl(), properties.idempotency().lease());
   }
 }

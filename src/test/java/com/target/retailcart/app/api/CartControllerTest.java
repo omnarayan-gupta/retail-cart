@@ -4,6 +4,8 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -22,6 +24,10 @@ import com.target.retailcart.app.application.CartService;
 import com.target.retailcart.app.application.ConcurrentCartModificationException;
 import com.target.retailcart.app.application.ItemNotFoundException;
 import com.target.retailcart.app.application.ItemUnavailableException;
+import com.target.retailcart.app.application.idempotency.IdempotencyKeyInProgressException;
+import com.target.retailcart.app.application.idempotency.IdempotencyKeyReusedException;
+import com.target.retailcart.app.application.idempotency.IdempotencyService;
+import com.target.retailcart.app.application.idempotency.IdempotentOutcome;
 import com.target.retailcart.app.application.view.AvailabilityStatus;
 import com.target.retailcart.app.application.view.CartView;
 import com.target.retailcart.app.application.view.CartViewLine;
@@ -35,6 +41,8 @@ import com.target.retailcart.app.domain.port.DependencyUnavailableException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.function.Supplier;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -52,6 +60,90 @@ class CartControllerTest {
   @Autowired MockMvc mvc;
   @MockitoBean CartService cartService;
   @MockitoBean CartViewService cartViewService;
+  @MockitoBean IdempotencyService idempotency;
+
+  /** By default the idempotency layer just runs the request, as it does without a key. */
+  @BeforeEach
+  @SuppressWarnings("unchecked")
+  void idempotencyRunsTheRequest() {
+    when(idempotency.execute(any(), any(), any()))
+        .thenAnswer(call ->
+            new IdempotentOutcome(((Supplier<CartItemResult>) call.getArgument(2)).get(), false));
+  }
+
+  @Test
+  void idempotencyKeyIsPassedThroughWithARequestDescription() throws Exception {
+    when(cartService.addItemToNewCart(TEE, 2))
+        .thenReturn(new CartItemResult(CART, TEE, 2, 2, true));
+
+    mvc.perform(
+            post(CARTS + "/items")
+                .header("Idempotency-Key", "3f2b8c1e-key")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(addBody(2)))
+        .andExpect(status().isCreated())
+        .andExpect(header().doesNotExist("Idempotent-Replayed"));
+
+    verify(idempotency)
+        .execute(eq("3f2b8c1e-key"), eq("POST /api/v1/carts/items 54276335 x2"), any());
+  }
+
+  @Test
+  void replayedAddReturnsTheOriginalResponseAndSaysSo() throws Exception {
+    doReturn(new IdempotentOutcome(new CartItemResult(CART, TEE, 2, 2, true), true))
+        .when(idempotency)
+        .execute(eq("key-1"), any(), any());
+
+    mvc.perform(
+            post(CARTS + "/items")
+                .header("Idempotency-Key", "key-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(addBody(2)))
+        .andExpect(status().isCreated())
+        .andExpect(header().string("Location", "http://localhost/api/v1/carts/" + CART))
+        .andExpect(header().string("Idempotent-Replayed", "true"))
+        .andExpect(jsonPath("$.cartId").value(CART.toString()));
+    verifyNoInteractions(cartService);
+  }
+
+  @Test
+  void invalidIdempotencyKeyIs400() throws Exception {
+    mvc.perform(
+            post(CARTS + "/" + CART + "/items")
+                .header("Idempotency-Key", "has spaces")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(addBody(1)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+        .andExpect(jsonPath("$.errors", hasItem(containsString("idempotencyKey"))));
+  }
+
+  @Test
+  void reusedIdempotencyKeyIs422() throws Exception {
+    doThrow(new IdempotencyKeyReusedException()).when(idempotency).execute(any(), any(), any());
+
+    mvc.perform(
+            post(CARTS + "/" + CART + "/items")
+                .header("Idempotency-Key", "key-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(addBody(1)))
+        .andExpect(status().isUnprocessableContent())
+        .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+  }
+
+  @Test
+  void idempotencyKeyInProgressIs409WithRetryAfter() throws Exception {
+    doThrow(new IdempotencyKeyInProgressException()).when(idempotency).execute(any(), any(), any());
+
+    mvc.perform(
+            post(CARTS + "/items")
+                .header("Idempotency-Key", "key-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(addBody(1)))
+        .andExpect(status().isConflict())
+        .andExpect(header().string("Retry-After", "1"))
+        .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_IN_PROGRESS"));
+  }
 
   @Test
   void firstAddCreatesCartAndReturns201WithLocation() throws Exception {
