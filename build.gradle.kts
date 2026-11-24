@@ -39,6 +39,7 @@ dependencies {
     testImplementation(libs.testcontainers.junit.jupiter)
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.wiremock.spring.boot)
+    testImplementation(libs.spring.boot.micrometer.tracing.test)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
@@ -75,4 +76,25 @@ tasks.jacocoTestReport {
         xml.required = true
         html.required = true
     }
+}
+
+// Quality gate: `check` (and so `build`) fails if coverage drops below these levels.
+tasks.jacocoTestCoverageVerification {
+    dependsOn(tasks.test)
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                minimum = "0.90".toBigDecimal()
+            }
+            limit {
+                counter = "BRANCH"
+                minimum = "0.80".toBigDecimal()
+            }
+        }
+    }
+}
+
+tasks.check {
+    dependsOn(tasks.jacocoTestCoverageVerification)
 }
