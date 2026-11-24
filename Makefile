@@ -1,7 +1,7 @@
 # Convenience targets. On Windows use `gradlew.bat` directly or run make from Git Bash.
 GRADLE := ./gradlew
 
-.PHONY: build test lint format run deps up down smoke clean
+.PHONY: build test lint format run deps up down smoke demo clean
 
 build:   ## Compile, check formatting, run all tests
 	$(GRADLE) build
@@ -27,9 +27,11 @@ up:      ## Build and start everything: Postgres, Target product services, cart 
 down:    ## Stop containers (cart data is kept; add -v to wipe it)
 	docker compose down
 
-smoke:   ## Quick health check of dependencies and the app
-	curl -fsS http://localhost:8080/product/v1/health && echo
-	curl -fsS http://localhost:8081/actuator/health && echo
+smoke:   ## End-to-end checks against the running stack (`make up` first)
+	scripts/smoke.sh
+
+demo:    ## Smoke checks, then stop the product services to show graceful degradation and recovery
+	scripts/smoke.sh --outage
 
 clean:
 	$(GRADLE) clean

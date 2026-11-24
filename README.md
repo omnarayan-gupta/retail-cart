@@ -33,6 +33,15 @@ curl http://localhost:8081/api/v1/carts/<cartId from the response>
 docker compose down               # stop (add -v to also delete cart data)
 ```
 
+### Check it works
+
+```bash
+scripts/smoke.sh            # 25 end-to-end checks with real catalog data (bash + curl only)
+scripts/smoke.sh --outage   # also stops the product services: the cart degrades, then recovers
+```
+
+`http/cart.http` has the same requests to run one by one from the IDE.
+
 | Service | URL |
 |---|---|
 | Cart service (this project) | http://localhost:8081/api/v1/carts |
